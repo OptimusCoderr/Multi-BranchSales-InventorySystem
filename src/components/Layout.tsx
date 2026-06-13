@@ -1,39 +1,36 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
   ShoppingBag, LayoutDashboard, Package, Warehouse, GitBranch,
-  TrendingUp, FileText, Users, Menu, LogOut, ChevronRight,
+  TrendingUp, FileText, Users, Menu, LogOut,
   Store, UserCheck,
 } from 'lucide-react';
 
 interface NavItem {
-  id: string;
+  path: string;
   label: string;
   icon: React.ReactNode;
   roles: string[];
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard',     label: 'Dashboard',        icon: <LayoutDashboard className="w-5 h-5" />, roles: ['admin', 'staff'] },
-  { id: 'sales',         label: 'Record Sale',       icon: <ShoppingBag className="w-5 h-5" />,     roles: ['admin', 'staff'] },
-  { id: 'daily-report', label: 'Daily Report',      icon: <FileText className="w-5 h-5" />,       roles: ['admin', 'staff'] },
-  { id: 'branch-stock', label: 'Branch Stock',      icon: <Store className="w-5 h-5" />,           roles: ['admin', 'staff'] },
-  { id: 'reports',      label: 'Sales Reports',     icon: <TrendingUp className="w-5 h-5" />,     roles: ['admin'] },
-  { id: 'debtors',      label: 'Debtors',           icon: <UserCheck className="w-5 h-5" />,       roles: ['admin'] },
-  { id: 'warehouses',   label: 'Warehouses',        icon: <Warehouse className="w-5 h-5" />,      roles: ['admin'] },
-  { id: 'products',     label: 'Products',          icon: <Package className="w-5 h-5" />,        roles: ['admin'] },
-  { id: 'branches',     label: 'Branches',          icon: <GitBranch className="w-5 h-5" />,      roles: ['admin'] },
-  { id: 'staff',        label: 'Staff Management',  icon: <Users className="w-5 h-5" />,          roles: ['admin'] },
+  { path: '/',           label: 'Dashboard',        icon: <LayoutDashboard className="w-5 h-5" />, roles: ['admin', 'staff'] },
+  { path: '/sales',      label: 'Record Sale',      icon: <ShoppingBag className="w-5 h-5" />,     roles: ['admin', 'staff'] },
+  { path: '/daily-report', label: 'Daily Report',  icon: <FileText className="w-5 h-5" />,       roles: ['admin', 'staff'] },
+  { path: '/branch-stock', label: 'Branch Stock',  icon: <Store className="w-5 h-5" />,           roles: ['admin', 'staff'] },
+  { path: '/admin/reports', label: 'Sales Reports', icon: <TrendingUp className="w-5 h-5" />,     roles: ['admin'] },
+  { path: '/admin/debtors', label: 'Debtors',       icon: <UserCheck className="w-5 h-5" />,       roles: ['admin'] },
+  { path: '/admin/report-approvals', label: 'Report Approvals', icon: <FileText className="w-5 h-5" />, roles: ['admin'] },
+  { path: '/admin/warehouses', label: 'Warehouses', icon: <Warehouse className="w-5 h-5" />,      roles: ['admin'] },
+  { path: '/admin/products', label: 'Products',    icon: <Package className="w-5 h-5" />,        roles: ['admin'] },
+  { path: '/admin/branches', label: 'Branches',     icon: <GitBranch className="w-5 h-5" />,       roles: ['admin'] },
+  { path: '/admin/staff', label: 'Staff Management', icon: <Users className="w-5 h-5" />,          roles: ['admin'] },
 ];
 
-interface Props {
-  currentPage: string;
-  onNavigate: (page: string) => void;
-  children: React.ReactNode;
-}
-
-export default function Layout({ currentPage, onNavigate, children }: Props) {
+export default function Layout() {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const role = user?.role ?? 'staff';
@@ -44,10 +41,12 @@ export default function Layout({ currentPage, onNavigate, children }: Props) {
     staff: 'bg-green-100 text-green-700',
   };
 
-  function navClick(id: string) {
-    onNavigate(id);
-    setSidebarOpen(false);
-  }
+  const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+    `w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+      isActive
+        ? 'bg-amber-500 text-white shadow-lg'
+        : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+    }`;
 
   const Sidebar = () => (
     <div className="flex flex-col h-full bg-slate-900 text-white">
@@ -65,19 +64,15 @@ export default function Layout({ currentPage, onNavigate, children }: Props) {
 
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {visibleItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => navClick(item.id)}
-            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-              currentPage === item.id
-                ? 'bg-amber-500 text-white shadow-lg'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
+          <NavLink
+            key={item.path}
+            to={item.path}
+            onClick={() => setSidebarOpen(false)}
+            className={navLinkClass}
           >
             {item.icon}
             <span className="flex-1 text-left">{item.label}</span>
-            {currentPage === item.id && <ChevronRight className="w-4 h-4" />}
-          </button>
+          </NavLink>
         ))}
       </nav>
 
@@ -94,7 +89,7 @@ export default function Layout({ currentPage, onNavigate, children }: Props) {
           </div>
         </div>
         <button
-          onClick={signOut}
+          onClick={() => { signOut(); navigate('/login'); }}
           className="w-full flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg text-sm transition-colors"
         >
           <LogOut className="w-4 h-4" />
@@ -133,7 +128,7 @@ export default function Layout({ currentPage, onNavigate, children }: Props) {
         </div>
 
         <main className="flex-1 overflow-y-auto">
-          {children}
+          <Outlet />
         </main>
       </div>
     </div>

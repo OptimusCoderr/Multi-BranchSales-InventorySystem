@@ -10,6 +10,7 @@ import branchRoutes from './routes/branches.js';
 import saleRoutes from './routes/sales.js';
 import reportRoutes from './routes/reports.js';
 import userRoutes from './routes/users.js';
+import warehouseRoutes from './routes/warehouses.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -58,6 +59,7 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/warehouses', warehouseRoutes);
 
 // 404 handler
 app.use((_req, res) => {

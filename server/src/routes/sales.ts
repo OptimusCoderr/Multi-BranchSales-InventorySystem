@@ -8,36 +8,56 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /api/sales
+// Supports:  ?branchId=  ?startDate=  ?endDate=  ?paymentMethod=  ?limit=  ?page=
+// BUG FIX #4: also supports ?ids=id1,id2,id3  so the report view can fetch
+//             a report's exact sale records in a single round-trip.
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const { branchId, startDate, endDate, paymentMethod, limit = '100', page = '1' } = req.query as Record<string, string>;
+    const {
+      branchId, startDate, endDate, paymentMethod,
+      limit = '100', page = '1',
+      ids,          // ← NEW: comma-separated MongoDB ObjectId list
+    } = req.query as Record<string, string>;
 
-    const filter: any = {};
+    const filter: Record<string, unknown> = {};
+
+    // ── ids shortcut ──────────────────────────────────────────────────────────
+    // When present every other filter is ignored; the caller wants exact records.
+    if (ids) {
+      const idList = ids.split(',').map(id => id.trim()).filter(Boolean);
+      if (idList.length === 0) return sendResponse(res, 200, 'Sales fetched', { sales: [], total: 0, page: 1, limit: idList.length });
+      filter._id = { $in: idList };
+      const sales = await Sale.find(filter).sort({ saleDate: -1 });
+      return sendResponse(res, 200, 'Sales fetched', { sales, total: sales.length, page: 1, limit: sales.length });
+    }
+
+    // ── normal filters ────────────────────────────────────────────────────────
     if (branchId) filter.branchId = branchId;
     if (paymentMethod) filter.paymentMethod = paymentMethod;
 
     if (startDate || endDate) {
-      filter.saleDate = {};
-      if (startDate) filter.saleDate.$gte = new Date(startDate);
-      if (endDate) filter.saleDate.$lte = new Date(endDate);
+      const dateRange: Record<string, Date> = {};
+      if (startDate) dateRange.$gte = new Date(startDate);
+      if (endDate)   dateRange.$lte = new Date(endDate);
+      filter.saleDate = dateRange;
     }
 
-    // Non-admin staff can only see their branch
+    // Non-admin staff can only see their own branch
     if (req.user?.role !== 'admin' && req.user?.branchId) {
       filter.branchId = req.user.branchId;
     }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip  = (parseInt(page) - 1) * parseInt(limit);
     const sales = await Sale.find(filter)
       .sort({ saleDate: -1 })
       .skip(skip)
       .limit(parseInt(limit));
-
     const total = await Sale.countDocuments(filter);
-    return sendResponse(res, 200, 'Sales fetched', { sales, total, page: parseInt(page), limit: parseInt(limit) });
-  } catch (err) {
-    return sendError(res, 500, 'Server error', err);
-  }
+
+    return sendResponse(res, 200, 'Sales fetched', {
+      sales, total, page: parseInt(page), limit: parseInt(limit),
+    });
+  } catch (err) { return sendError(res, 500, 'Server error', err); }
 });
 
 // GET /api/sales/:id
@@ -46,9 +66,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     const sale = await Sale.findById(req.params.id);
     if (!sale) return sendError(res, 404, 'Sale not found');
     return sendResponse(res, 200, 'Sale fetched', sale);
-  } catch (err) {
-    return sendError(res, 500, 'Server error', err);
-  }
+  } catch (err) { return sendError(res, 500, 'Server error', err); }
 });
 
 // POST /api/sales
@@ -72,30 +90,25 @@ router.post(
         subtotal: item.quantity * item.unitPrice,
       }));
       const totalAmount = processedItems.reduce((sum: number, i: any) => sum + i.subtotal, 0);
-
       const sale = await Sale.create({
         ...rest,
         items: processedItems,
         totalAmount,
-        staffId: req.userId,
+        staffId:   req.userId,
         staffName: req.user?.fullName ?? req.user?.email ?? '',
-        saleDate: rest.saleDate ? new Date(rest.saleDate) : new Date(),
+        saleDate:  rest.saleDate ? new Date(rest.saleDate) : new Date(),
       });
       return sendResponse(res, 201, 'Sale recorded', sale);
-    } catch (err) {
-      return sendError(res, 500, 'Server error', err);
-    }
+    } catch (err) { return sendError(res, 500, 'Server error', err); }
   }
 );
 
-// DELETE /api/sales/:id (admin only)
+// DELETE /api/sales/:id  (admin only)
 router.delete('/:id', adminOnly, async (req: Request, res: Response) => {
   try {
     await Sale.findByIdAndDelete(req.params.id);
     return sendResponse(res, 200, 'Sale deleted');
-  } catch (err) {
-    return sendError(res, 500, 'Server error', err);
-  }
+  } catch (err) { return sendError(res, 500, 'Server error', err); }
 });
 
 export default router;

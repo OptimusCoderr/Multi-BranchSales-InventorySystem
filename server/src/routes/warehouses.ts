@@ -43,15 +43,6 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/warehouses/:id
-router.delete('/:id', async (req: Request, res: Response) => {
-  try {
-    await Warehouse.findByIdAndDelete(req.params.id);
-    return sendResponse(res, 200, 'Warehouse deleted');
-  } catch (err) {
-    return sendError(res, 500, 'Server error', err);
-  }
-});
 
 // GET /api/warehouses/:id/stock
 router.get('/:id/stock', async (req: Request, res: Response) => {
@@ -62,6 +53,18 @@ router.get('/:id/stock', async (req: Request, res: Response) => {
     return sendError(res, 500, 'Server error', err);
   }
 });
+
+// DELETE /api/warehouses/:id
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    await Warehouse.findByIdAndDelete(req.params.id);
+    return sendResponse(res, 200, 'Warehouse deleted');
+  } catch (err) {
+    return sendError(res, 500, 'Server error', err);
+  }
+});
+
+
 
 // PUT /api/warehouses/:id/stock  (upsert)
 router.put('/:id/stock', async (req: Request, res: Response) => {

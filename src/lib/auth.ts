@@ -1,8 +1,6 @@
 /**
- * Client-side auth helpers backed by MongoDB.
- *
- * All password hashing happens server-side (Atlas App Services).
- * JWT is stored in sessionStorage (cleared on tab close) for XSS safety.
+ * Client-side auth helpers — talks to /api/auth on the Express backend.
+ * JWT stored in sessionStorage (cleared on tab close).
  */
 
 import { setAuthToken, getAuthToken } from './api';
@@ -18,17 +16,16 @@ export interface AuthUser {
 
 function decodeToken(token: string): any {
   try {
-    const payload = token.split('.')[1];
-    return JSON.parse(atob(payload));
+    return JSON.parse(atob(token.split('.')[1]));
   } catch {
     return null;
   }
 }
 
 export function isTokenExpired(token: string): boolean {
-  const payload = decodeToken(token);
-  if (!payload?.exp) return true;
-  return Date.now() >= payload.exp * 1000;
+  const p = decodeToken(token);
+  if (!p?.exp) return true;
+  return Date.now() >= p.exp * 1000;
 }
 
 export function getCurrentUser(): AuthUser | null {
@@ -37,8 +34,16 @@ export function getCurrentUser(): AuthUser | null {
     setAuthToken(null);
     return null;
   }
-  const payload = decodeToken(token);
-  return payload ? (payload as AuthUser) : null;
+  const p = decodeToken(token);
+  if (!p) return null;
+  return {
+    id: p.id,
+    fullName: p.fullName ?? p.email ?? '',
+    email: p.email,
+    phone: p.phone ?? '',
+    role: p.role,
+    branchId: p.branchId ?? null,
+  };
 }
 
 const SESSION_KEY = 'bt_session';
@@ -65,14 +70,14 @@ export function clearSession() {
   setAuthToken(null);
 }
 
-// ─── Auth API (login only — users created by admin) ────────────────────────────
+// ─── Auth API ─────────────────────────────────────────────────────────────────
 
-const AUTH_ENDPOINT = import.meta.env.VITE_MONGO_AUTH_ENDPOINT;
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 
 async function authFetch(path: string, body: object): Promise<any> {
-  const res = await fetch(`${AUTH_ENDPOINT}${path}`, {
+  const res = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'api-key': import.meta.env.VITE_MONGO_API_KEY },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -81,9 +86,11 @@ async function authFetch(path: string, body: object): Promise<any> {
 }
 
 export async function loginUser(email: string, password: string): Promise<{ token: string; user: AuthUser }> {
-  const data = await authFetch('/login', { email: email.trim().toLowerCase(), password });
-  persistSession(data.token);
-  return data;
+  const res = await authFetch('/api/auth/login', { email: email.trim().toLowerCase(), password });
+  // Backend wraps in { success, data: { token, user } }
+  const payload = res?.data ?? res;
+  persistSession(payload.token);
+  return payload as { token: string; user: AuthUser };
 }
 
 export function logoutUser() {

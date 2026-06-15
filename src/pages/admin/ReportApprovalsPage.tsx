@@ -16,12 +16,12 @@ const statusIcon = (s: string) =>
 
 export default function ReportApprovalsPage() {
   const { user } = useAuth();
-  const [reports, setReports] = useState<(DailyReport & { branch?: Branch })[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [reports, setReports]     = useState<(DailyReport & { branch?: Branch })[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [filter, setFilter]       = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
   const [viewReport, setViewReport] = useState<(DailyReport & { branch?: Branch }) | null>(null);
   const [reviewNotes, setReviewNotes] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]       = useState(false);
   const [reportSales, setReportSales] = useState<Sale[]>([]);
 
   useEffect(() => { fetchReports(); }, [filter]);
@@ -36,20 +36,23 @@ export default function ReportApprovalsPage() {
       find(Collections.BRANCHES, {}),
     ]);
     const branchMap = Object.fromEntries((branches as Branch[]).map(b => [b._id, b]));
-
-    setReports((reps as DailyReport[]).map(r => ({
-      ...r,
-      branch: branchMap[r.branchId],
-    })));
+    setReports((reps as DailyReport[]).map(r => ({ ...r, branch: branchMap[r.branchId] })));
     setLoading(false);
   }
 
   async function openReport(r: typeof reports[number]) {
     setViewReport(r);
     setReviewNotes(r.reviewNotes || '');
+
+    // ── BUG FIX #4 ────────────────────────────────────────────────────────────
+    // Previously this called find(SALES, { _id: { $in: r.saleIds.map(...) } })
+    // which api.ts silently dropped (no $in support), always returning [].
+    //
+    // Now: api.ts recognises _id.$in and serialises it as ?ids=id1,id2,id3
+    // which the backend sales route handles natively in a single query.
     if (r.saleIds?.length) {
       const sales = await find(Collections.SALES, {
-        _id: { $in: r.saleIds.map(id => ({ $oid: id })) },
+        _id: { $in: r.saleIds },   // plain string ids — api.ts maps these to ?ids=
       });
       setReportSales(sales as Sale[]);
     } else {
@@ -61,7 +64,13 @@ export default function ReportApprovalsPage() {
     if (!viewReport) return;
     setSaving(true);
     await updateOne(Collections.DAILY_REPORTS, { _id: { $oid: viewReport._id } }, {
-      $set: { status, reviewedBy: user!.id, reviewedByName: user!.fullName, reviewedAt: new Date().toISOString(), reviewNotes: reviewNotes.trim() },
+      $set: {
+        status,
+        reviewedBy:     user!.id,
+        reviewedByName: user!.fullName,
+        reviewedAt:     new Date().toISOString(),
+        reviewNotes:    reviewNotes.trim(),
+      },
     });
     await fetchReports();
     setViewReport(null);
@@ -83,18 +92,22 @@ export default function ReportApprovalsPage() {
             <div className="sticky top-0 bg-white border-b border-slate-100 p-5 flex items-center justify-between rounded-t-2xl">
               <div>
                 <h3 className="text-lg font-semibold text-slate-800">Daily Report</h3>
-                <p className="text-sm text-slate-500">{viewReport.branch?.name} · {viewReport.reportDate?.split('T')[0]}</p>
+                <p className="text-sm text-slate-500">
+                  {viewReport.branch?.name} · {viewReport.reportDate?.split('T')[0]}
+                </p>
               </div>
-              <button onClick={() => setViewReport(null)} className="text-slate-400 hover:text-slate-600 p-1"><X className="w-5 h-5" /></button>
+              <button onClick={() => setViewReport(null)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="p-5 space-y-5">
               <div className="grid grid-cols-4 gap-3">
                 {[
-                  { label: 'Cash', value: viewReport.totalCashSales, cls: 'bg-green-50 text-green-700' },
-                  { label: 'POS', value: viewReport.totalPosSales, cls: 'bg-blue-50 text-blue-700' },
-                  { label: 'Unpaid', value: viewReport.totalUnpaidSales, cls: 'bg-red-50 text-red-700' },
-                  { label: 'Total', value: viewReport.totalSales, cls: 'bg-amber-50 text-amber-700' },
+                  { label: 'Cash',   value: viewReport.totalCashSales,   cls: 'bg-green-50 text-green-700' },
+                  { label: 'POS',    value: viewReport.totalPosSales,    cls: 'bg-blue-50 text-blue-700'  },
+                  { label: 'Unpaid', value: viewReport.totalUnpaidSales, cls: 'bg-red-50 text-red-700'   },
+                  { label: 'Total',  value: viewReport.totalSales,       cls: 'bg-amber-50 text-amber-700'},
                 ].map(c => (
                   <div key={c.label} className={`text-center p-3 rounded-xl ${c.cls}`}>
                     <p className="text-xs font-medium">{c.label}</p>
@@ -110,7 +123,9 @@ export default function ReportApprovalsPage() {
                 </div>
                 <div className="p-3 bg-slate-100 rounded-xl text-center">
                   <p className="text-xs font-medium text-slate-700">Net Income</p>
-                  <p className={`font-bold ${viewReport.netIncome >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(viewReport.netIncome)}</p>
+                  <p className={`font-bold ${viewReport.netIncome >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {fmt(viewReport.netIncome)}
+                  </p>
                 </div>
                 <div className="p-3 bg-amber-50 rounded-xl text-center">
                   <p className="text-xs font-medium text-amber-700">Debtors</p>
@@ -118,23 +133,33 @@ export default function ReportApprovalsPage() {
                 </div>
               </div>
 
-              <p className="text-sm text-slate-500">Submitted by: <span className="font-medium text-slate-700">{viewReport.submittedByName}</span></p>
-              {viewReport.notes && <p className="text-sm text-slate-500">Notes: <span className="text-slate-700">{viewReport.notes}</span></p>}
+              <p className="text-sm text-slate-500">
+                Submitted by: <span className="font-medium text-slate-700">{viewReport.submittedByName}</span>
+              </p>
+              {viewReport.notes && (
+                <p className="text-sm text-slate-500">Notes: <span className="text-slate-700">{viewReport.notes}</span></p>
+              )}
 
+              {/* Sales list — now populated correctly via ?ids= fix */}
               {reportSales.length > 0 && (
                 <div>
-                  <h4 className="font-medium text-slate-700 mb-2 text-sm">Transactions ({reportSales.length})</h4>
+                  <h4 className="font-medium text-slate-700 mb-2 text-sm">
+                    Transactions ({reportSales.length})
+                  </h4>
                   <div className="max-h-40 overflow-y-auto space-y-1.5">
                     {reportSales.map(s => (
                       <div key={s._id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-lg text-sm">
                         <div>
                           <span className="font-medium text-slate-800">{fmt(s.totalAmount)}</span>
                           <span className="text-slate-400 ml-2">by {s.staffName}</span>
-                          {s.customerName && <span className="text-slate-500 ml-2">{s.customerName}</span>}
+                          {s.customerName && (
+                            <span className="text-slate-500 ml-2">{s.customerName}</span>
+                          )}
                         </div>
                         <span className={`text-xs px-2 py-0.5 rounded-full capitalize font-medium ${
-                          s.paymentMethod === 'cash' ? 'bg-green-100 text-green-700' :
-                          s.paymentMethod === 'pos' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'
+                          s.paymentMethod === 'cash'   ? 'bg-green-100 text-green-700' :
+                          s.paymentMethod === 'pos'    ? 'bg-blue-100 text-blue-700'  :
+                                                         'bg-red-100 text-red-700'
                         }`}>{s.paymentMethod}</span>
                       </div>
                     ))}
@@ -144,28 +169,47 @@ export default function ReportApprovalsPage() {
 
               {viewReport.status === 'pending' && (
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Review Notes (optional)</label>
-                  <textarea value={reviewNotes} onChange={e => setReviewNotes(e.target.value)} rows={2}
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Review Notes (optional)
+                  </label>
+                  <textarea
+                    value={reviewNotes}
+                    onChange={e => setReviewNotes(e.target.value)}
+                    rows={2}
                     className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none text-sm"
-                    placeholder="Optional notes for the submitter..." />
+                    placeholder="Optional notes for the submitter..."
+                  />
                   <div className="flex gap-3 mt-3">
-                    <button onClick={() => handleReview('rejected')} disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium text-sm transition-colors">
+                    <button
+                      onClick={() => handleReview('rejected')}
+                      disabled={saving}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium text-sm transition-colors"
+                    >
                       <XCircle className="w-4 h-4" />Reject
                     </button>
-                    <button onClick={() => handleReview('approved')} disabled={saving}
-                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium text-sm transition-colors">
-                      {saving ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                    <button
+                      onClick={() => handleReview('approved')}
+                      disabled={saving}
+                      className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-lg font-medium text-sm transition-colors"
+                    >
+                      {saving
+                        ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        : <CheckCircle className="w-4 h-4" />}
                       Approve
                     </button>
                   </div>
                 </div>
               )}
+
               {viewReport.status !== 'pending' && (
-                <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${viewReport.status === 'approved' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${
+                  viewReport.status === 'approved' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'
+                }`}>
                   {statusIcon(viewReport.status)}
                   <span className="capitalize font-medium">{viewReport.status}</span>
-                  {viewReport.reviewNotes && <span className="italic ml-1">— "{viewReport.reviewNotes}"</span>}
+                  {viewReport.reviewNotes && (
+                    <span className="italic ml-1">— "{viewReport.reviewNotes}"</span>
+                  )}
                 </div>
               )}
             </div>
@@ -175,8 +219,15 @@ export default function ReportApprovalsPage() {
 
       <div className="flex gap-2">
         {(['all', 'pending', 'approved', 'rejected'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${filter === f ? 'bg-amber-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium capitalize transition-colors ${
+              filter === f
+                ? 'bg-amber-500 text-white'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+            }`}
+          >
             {f}
           </button>
         ))}
@@ -184,9 +235,16 @@ export default function ReportApprovalsPage() {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-100">
         {loading ? (
-          <div className="p-6 space-y-3">{[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-slate-100 rounded-lg animate-pulse" />)}</div>
+          <div className="p-6 space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="h-16 bg-slate-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
         ) : reports.length === 0 ? (
-          <div className="text-center py-12 text-slate-400"><Clock className="w-12 h-12 mx-auto mb-3 opacity-40" /><p>No reports found</p></div>
+          <div className="text-center py-12 text-slate-400">
+            <Clock className="w-12 h-12 mx-auto mb-3 opacity-40" />
+            <p>No reports found</p>
+          </div>
         ) : (
           <div className="divide-y divide-slate-100">
             {reports.map(r => (
@@ -198,18 +256,26 @@ export default function ReportApprovalsPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-slate-800">{r.branch?.name}</p>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusColor(r.status)}`}>{r.status}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusColor(r.status)}`}>
+                        {r.status}
+                      </span>
                     </div>
-                    <p className="text-sm text-slate-500">{r.reportDate?.split('T')[0]} · {r.submittedByName}</p>
+                    <p className="text-sm text-slate-500">
+                      {r.reportDate?.split('T')[0]} · {r.submittedByName}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-right hidden sm:block">
                     <p className="font-bold text-slate-800">{fmt(r.totalSales)}</p>
-                    <p className="text-xs text-slate-400">Exp: {fmt(r.totalExpenses)} | Debtors: {r.debtorCount}</p>
+                    <p className="text-xs text-slate-400">
+                      Exp: {fmt(r.totalExpenses)} | Debtors: {r.debtorCount}
+                    </p>
                   </div>
-                  <button onClick={() => openReport(r)}
-                    className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors">
+                  <button
+                    onClick={() => openReport(r)}
+                    className="flex items-center gap-1.5 text-sm px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+                  >
                     <Eye className="w-4 h-4" />Review
                   </button>
                 </div>

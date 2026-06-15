@@ -22,10 +22,7 @@ const userSchema = new Schema<IUser>(
       unique: true,
       lowercase: true,
       trim: true,
-      match: [
-        /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/,
-        'Invalid email format',
-      ],
+      match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Invalid email format'],
     },
     password: {
       type: String,
@@ -33,54 +30,33 @@ const userSchema = new Schema<IUser>(
       minlength: [8, 'Password must be at least 8 characters'],
       select: false,
     },
-    fullName: {
-      type: String,
-      required: [true, 'Full name is required'],
-      trim: true,
-    },
-    phone: {
-      type: String,
-      trim: true,
-    },
-    role: {
-      type: String,
-      enum: ['admin', 'manager', 'staff'],
-      default: 'staff',
-    },
-    branchId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Branch',
-      default: null,
-    },
-    isVerified: {
-      type: Boolean,
-      default: false,
-    },
+    fullName: { type: String, required: [true, 'Full name is required'], trim: true },
+    phone: { type: String, trim: true },
+    role: { type: String, enum: ['admin', 'manager', 'staff'], default: 'staff' },
+    branchId: { type: Schema.Types.ObjectId, ref: 'Branch', default: null },
+    isVerified: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
-// Hash password before saving
-userSchema.pre<IUser>('save', async function (next) {
-  if (!this.isModified('password')) {
-    return next();
-  }
-
-  try {
-    const hashedPassword = await bcrypt.hash(
-      this.password,
-      parseInt(process.env.BCRYPT_ROUNDS || '12')
-    );
-    this.password = hashedPassword;
-    next();
-  } catch (error) {
-    next(error as Error);
-  }
+// ── Pre-save hook ─────────────────────────────────────────────────────────────
+// Mongoose 8+ async pre-hooks: throw instead of calling next(err),
+// return early instead of calling next() to skip.
+userSchema.pre('save', async function () {
+  if (!this.isModified('password')) return;
+  this.password = await bcrypt.hash(
+    this.password,
+    parseInt(process.env.BCRYPT_ROUNDS || '12')
+  );
 });
 
-// Method to compare passwords
-userSchema.methods.comparePassword = async function (candidatePassword: string) {
-  return await bcrypt.compare(candidatePassword, this.password);
+// ── Instance method ───────────────────────────────────────────────────────────
+userSchema.methods.comparePassword = async function (
+  candidatePassword: string
+): Promise<boolean> {
+  // `this.password` is normally excluded by `select: false`; it is present here
+  // because auth routes explicitly do `.select('+password')` before calling this.
+  return bcrypt.compare(candidatePassword, this.password as string);
 };
 
 export default mongoose.model<IUser>('User', userSchema);

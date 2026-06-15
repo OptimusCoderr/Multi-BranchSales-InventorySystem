@@ -10,7 +10,7 @@ export interface IDailyReport extends Document {
   totalAmount: number;
   notes?: string;
   status: 'pending' | 'approved' | 'rejected';
-  reviewedBy?: mongoose.Types.ObjectId;
+  reviewedByName?: string;
   reviewedAt?: Date;
   reviewNotes?: string;
   saleIds: mongoose.Types.ObjectId[];

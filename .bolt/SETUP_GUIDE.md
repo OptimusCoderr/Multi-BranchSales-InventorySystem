@@ -55,10 +55,10 @@ const mongoose = require('mongoose');
 require('dotenv/config');
 mongoose.connect(process.env.MONGODB_URI).then(async () => {
   const bcrypt = require('bcryptjs');
-  const hash = await bcrypt.hash('YourPassword123', 12);
+  const hash = await bcrypt.hash('ANULUNKO-ALLMAAJ-1-26-1-30-14-16-8', 12);
   await mongoose.connection.db.collection('users').insertOne({
     fullName: 'Admin User',
-    email: 'admin@yourcompany.com',
+    email: 'chukwuebuka@allmaaj.com',
     password: hash,
     role: 'admin',
     phone: '',
